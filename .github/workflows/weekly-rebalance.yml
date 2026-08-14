@@ -1,0 +1,81 @@
+name: Weekly rebalance
+
+on:
+  schedule:
+    # 12:00 UTC every Monday — ~90 min before the US open (13:30 UTC in EDT,
+    # 14:30 in EST), so targets are in place before the platform can act on them.
+    - cron: "0 12 * * 1"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build the portfolio but do not publish"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write        # needed to commit outputs/ back to the repo
+
+concurrency:
+  group: weekly-rebalance
+  cancel-in-progress: false
+
+jobs:
+  rebalance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      # Yahoo rate-limits datacenter IPs, and GitHub runners get hit harder than
+      # home connections. Retry a few times with backoff before giving up.
+      - name: Build portfolio
+        run: |
+          for attempt in 1 2 3; do
+            echo "::group::attempt $attempt"
+            if python portfolio_engine.py; then
+              echo "::endgroup::"
+              exit 0
+            fi
+            echo "::endgroup::"
+            echo "attempt $attempt failed; sleeping before retry"
+            sleep $((attempt * 120))
+          done
+          echo "::error::portfolio_engine.py failed 3x — likely Yahoo throttling. Nothing published."
+          exit 1
+
+      - name: Publish to Quantphemes
+        if: ${{ inputs.dry_run != true }}
+        env:
+          QP_API_KEY: ${{ secrets.QP_API_KEY }}
+          QP_PORTFOLIO_ID: ${{ secrets.QP_PORTFOLIO_ID }}
+          QP_STRATEGY_ID: ${{ secrets.QP_STRATEGY_ID }}
+        run: python quantphemes_publish.py --verify
+
+      - name: Show payload only
+        if: ${{ inputs.dry_run == true }}
+        run: python quantphemes_publish.py --dry-run
+
+      # The runner is wiped after each job, so portfolio_history.csv only keeps
+      # accumulating if it is committed back.
+      - name: Commit outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add outputs/
+          git diff --staged --quiet || git commit -m "Rebalance $(date -u +%Y-%m-%d)"
+          git push
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portfolio-${{ github.run_id }}
+          path: outputs/
+          retention-days: 90
