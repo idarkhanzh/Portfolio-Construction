@@ -62,10 +62,12 @@ warnings.filterwarnings("ignore")
 # --------------------------------------------------------------------------
 # CONFIG
 # --------------------------------------------------------------------------
-BUDGET_USD = 245_000  # ~98% of the HKD 1.95m account. The account is denominated in
-                      # HKD, which the peg holds only within 7.75-7.85, so a full
-                      # 250k of orders can exceed available cash at the weak end and
-                      # get the last legs rejected. The ~5k buffer also covers fees.
+BUDGET_USD = 248_000  # The account holds HKD 1,950,000, not USD 250,000. At the
+                      # 2026-08-14 spot of 7.8465 that is ~$248,500, so this leaves
+                      # only ~$500 of headroom. Note shares are sized on Friday's
+                      # close but execute at Monday's open: a gap up of more than
+                      # ~0.2% makes the basket cost more than the account holds and
+                      # the last legs get rejected. Lower this if fills start failing.
 N_STOCKS = 10                 # final portfolio size
 LOOKBACK_YEARS = 2            # price history window used to estimate covariance
 MIN_HISTORY_WEEKS = 78        # ~1.5 years; tickers with less history are dropped
