@@ -1,6 +1,6 @@
 # Weekly NASDAQ-100 Portfolio Engine
 
-Builds a 10-stock, $250,000 portfolio from NASDAQ-100 constituents each week,
+Builds a 10-stock, $248,000 portfolio from NASDAQ-100 constituents each week,
 grounded in portfolio theory (not signals). See the module docstring in
 `portfolio_engine.py` for the full methodology and the papers behind each step.
 
@@ -23,7 +23,7 @@ This will:
 4. Compute three weighting schemes on those 10: Markowitz GMV (Ledoit-Wolf
    shrinkage), Hierarchical Risk Parity, and equal weight
 5. Convert the chosen scheme (`PRIMARY_METHOD` in the config block) into
-   integer share counts within the $250,000 budget
+   integer share counts within the $248,000 budget
 6. Write `outputs/portfolio_<date>.csv` and append to `outputs/portfolio_history.csv`
 
 ## How the Markowitz problem is actually solved
@@ -205,7 +205,7 @@ This is a script, not a daemon — point a scheduler at it once a week, e.g.:
 
 | Variable | Meaning |
 |---|---|
-| `BUDGET_USD` | Total dollars to deploy (default $250,000) |
+| `BUDGET_USD` | Total dollars to deploy (default $248,000, sized to an HKD 1.95m account) |
 | `N_STOCKS` | Portfolio size (default 10) |
 | `LOOKBACK_YEARS` | Price history window for covariance estimation |
 | `PRIMARY_METHOD` | Which weighting scheme actually sizes the shares: `"markowitz_gmv"`, `"hrp"`, or `"equal_weight"` — the other two are still computed and saved as comparison columns |
