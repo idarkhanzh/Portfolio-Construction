@@ -156,6 +156,62 @@ def verify(strategy_id: str) -> None:
               "rebalance, worth checking if it persists past the next session.")
 
 
+def check_reconciliation(strategy_id: str, csv_path: Path) -> int:
+    """
+    Did the market actually execute what we published? Meant to run hours after
+    the open, not seconds after the PATCH -- right after publishing every
+    currentQuantity is 0 by definition, which tells you nothing.
+
+    Returns a process exit code so CI fails loudly instead of drifting silently.
+    """
+    quantities = _request(
+        "GET", f"/api/v1/strategy/{strategy_id}/holding/strategy-quantity"
+    )["strategy_quantities"]
+    orders = _request("GET", f"/api/v1/strategy/{strategy_id}/order")["orders"]
+
+    expected = {str(row.ticker): int(row.shares)
+                for row in pd.read_csv(csv_path).itertuples() if row.shares > 0}
+    reported = {r["symbol"]: r for r in quantities}
+
+    problems: list[str] = []
+
+    if not quantities:
+        problems.append("the platform reports no positions at all for this strategy - "
+                        "targets were published but nothing was acted on")
+
+    # A symbol the platform never echoes back is the signature of an unsupported
+    # or restricted instrument (ADRs and foreign listings are the usual cause).
+    for symbol in sorted(set(expected) - set(reported)):
+        problems.append(f"{symbol}: published as a target but absent from the platform's "
+                        "position list - possibly an unsupported instrument")
+
+    print(f"\n{'symbol':<8}{'target':>10}{'current':>10}  status")
+    for symbol in sorted(reported):
+        row = reported[symbol]
+        target, current = row["targetQuantity"], row["currentQuantity"]
+        gap = current - target
+        status = "ok" if gap == 0 else f"SHORT {-gap}" if gap < 0 else f"OVER {gap}"
+        print(f"{symbol:<8}{target:>10}{current:>10}  {status}")
+        if gap != 0:
+            problems.append(f"{symbol}: holds {current} against a target of {target}")
+
+    unfilled_orders = [o for o in orders if o.get("status") != "Filled"]
+    for order in unfilled_orders:
+        problems.append(f"{order['symbol']}: order {order.get('side')} "
+                        f"{order.get('quantity')} is {order.get('status')}, not Filled")
+
+    if not problems:
+        print(f"\nAll {len(reported)} positions reconciled against target.")
+        return 0
+
+    print(f"\n{len(problems)} problem(s) found:")
+    for problem in problems:
+        print(f"  - {problem}")
+    print("\nMost common cause is insufficient cash: the account is HKD-denominated, so "
+          "a USD-sized basket can exceed available funds at the weak end of the peg.")
+    return 1
+
+
 # --------------------------------------------------------------------------
 
 def main() -> None:
@@ -169,6 +225,10 @@ def main() -> None:
                         help="POST a new holding strategy instead of PATCHing targets")
     parser.add_argument("--verify", action="store_true",
                         help="after publishing, read back current vs target quantities")
+    parser.add_argument("--check", action="store_true",
+                        help="publish nothing; check that live positions match the last "
+                             "published targets. Exits non-zero on any drift. Run this "
+                             "hours after the open, not right after publishing.")
     parser.add_argument("--csv", type=Path,
                         help="publish this CSV instead of the newest run")
     args = parser.parse_args()
@@ -178,6 +238,11 @@ def main() -> None:
         return
 
     csv_path = args.csv or latest_csv()
+
+    if args.check:
+        print(f"checking against {csv_path.name}")
+        sys.exit(check_reconciliation(resolve_strategy_id(), csv_path))
+
     payload = build_payload(csv_path)
     stocks = payload["holdings"][0]["stocks"]
 

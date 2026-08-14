@@ -1,0 +1,37 @@
+name: Reconciliation check
+
+# Publishing targets and actually filling them are separate events hours apart.
+# The rebalance workflow only proves the PATCH landed; this proves the market
+# executed it. Failing here is the notification -- silent drift means the live
+# portfolio no longer matches the optimized one followers signed up for.
+
+on:
+  schedule:
+    # 16:00 UTC Monday: ~2.5h after the US open in EDT, ~1.5h in EST.
+    - cron: "0 16 * * 1"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # Picks up outputs/ committed by the rebalance job earlier the same
+      # morning, which is what the live positions get compared against.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Only the publisher runs here, so skip yfinance/scipy/sklearn.
+      - run: pip install pandas requests
+
+      - name: Compare live positions against published targets
+        env:
+          QP_API_KEY: ${{ secrets.QP_API_KEY }}
+          QP_PORTFOLIO_ID: ${{ secrets.QP_PORTFOLIO_ID }}
+          QP_STRATEGY_ID: ${{ secrets.QP_STRATEGY_ID }}
+        run: python quantphemes_publish.py --check

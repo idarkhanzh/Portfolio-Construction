@@ -62,7 +62,10 @@ warnings.filterwarnings("ignore")
 # --------------------------------------------------------------------------
 # CONFIG
 # --------------------------------------------------------------------------
-BUDGET_USD = 250_000
+BUDGET_USD = 245_000  # ~98% of the HKD 1.95m account. The account is denominated in
+                      # HKD, which the peg holds only within 7.75-7.85, so a full
+                      # 250k of orders can exceed available cash at the weak end and
+                      # get the last legs rejected. The ~5k buffer also covers fees.
 N_STOCKS = 10                 # final portfolio size
 LOOKBACK_YEARS = 2            # price history window used to estimate covariance
 MIN_HISTORY_WEEKS = 78        # ~1.5 years; tickers with less history are dropped
